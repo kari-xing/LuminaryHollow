@@ -1,0 +1,157 @@
+AI"树洞" + "知识花园" 双项目完整需求方案
+项目一：AI"树洞" —— 情绪感知对话伙伴
+一、项目定位
+一个有记忆、有温度、能感知情绪的AI对话伙伴。不同于传统AI助手只做问答，它像朋友一样记得你说过的话，能察觉你的情绪变化，陪你梳理思路、记录心情。
+理念：情绪被看见，心里就有了光
+核心差异化卖点：情感感知 + 长期记忆 + 可视化心情日记
+
+二、功能模块拆解
+界面，有温暖的话。
+模块1：聊天主界面
+功能	说明
+实时对话	WebSocket通信，支持流式打字机效果输出
+情绪标签	每次AI回复携带情绪标签（😊开心 / 😌平静 / 😔低落 / 😤焦虑 / 😡愤怒），对应不同颜色边框/背景
+快捷情绪记录	用户可主动点击心情图标（5种），快速记录当下情绪
+消息气泡	用户消息靠右（蓝色），AI消息靠左（情绪主题色），带轻微动画
+输入框	支持Enter发送、Shift+Enter换行，输入时显示"对方正在输入..."
+模块2：记忆系统（核心）
+记忆层级	技术实现	存储内容	保留时长
+短期记忆	Redis滑动窗口	最近10轮对话	当前会话
+长期记忆	向量摘要（LLM每5轮自动总结）	关键事件/情绪状态/偏好	永久
+用户画像	PostgreSQL结构化字段	姓名/年龄/职业/长期目标/核心困扰	永久
+记忆调用流程：
+
+text
+用户发消息 → 检索用户画像(PostgreSQL) → 检索长期记忆(向量库) 
+→ 拼接近期短期记忆(Redis) → 组装成完整Prompt → LLM生成回复
+Prompt模板示例：
+
+text
+你是一个温暖、善解人意的AI朋友。以下是与当前用户的对话历史和相关信息：
+
+【用户画像】
+- 姓名：{name}，{age}岁，{occupation}
+- 核心目标：{goal}
+- 长期困扰：{struggle}
+
+【长期记忆】（AI自动总结的过往重要信息）
+{vector_retrieved_memories}
+
+【近期对话】（最近10轮）
+{recent_chat_history}
+
+【当前用户情绪感知】：{detected_emotion}
+
+请以温暖、共情的语气回复用户，自然地引用长期记忆中的信息（如"上次你说过..."），回复不超过150字。同时根据用户最后一句话判断其当前情绪，在回复结尾用【情绪标签：xxx】标注。
+模块3：心情日记看板
+组件	技术方案	说明
+情绪日历热力图	类似GitHub贡献图	每天一格，颜色深浅代表情绪积极程度（从红到绿）
+情绪趋势折线图	ECharts / Chart.js	展示近30天/90天情绪波动曲线
+每日摘要时间轴	卡片列表	每次对话自动生成摘要："2026-08-06 聊了15分钟，主要讨论了面试焦虑，情绪:😰"
+关键词云	词云图库	从所有对话中提取高频词，反映近期关注焦点
+周报生成	LLM每周日自动生成	综合本周情绪趋势、高频话题、关键事件，生成一段总结文字
+模块4：用户与数据管理
+功能	说明
+用户注册/登录	JWT认证，手机号或邮箱注册
+多设备会话同步	同一账号Web/App对话历史互通
+数据导出	支持导出全部对话记录为JSON/Markdown
+隐私模式	可设置"不记录长期记忆"，所有对话仅存短期窗口
+三、技术架构
+text
+┌─────────────────────────────────────────────────────────────┐
+│                      前端 (React + TS)                      │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
+│  │ 聊天界面  │  │ 日历热力  │  │ 趋势图   │  │ 用户设置  │  │
+│  └────┬─────┘  └────┬─────┘  └────┬─────┘  └────┬─────┘  │
+└───────┼─────────────┼─────────────┼─────────────┼────────┘
+        │             │             │             │
+        ▼             ▼             ▼             ▼
+┌─────────────────────────────────────────────────────────────┐
+│                   Nginx (负载均衡/静态资源)                  │
+└─────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    后端 (FastAPI + asyncio)                 │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  │
+│  │ 认证模块  │  │ 对话引擎  │  │ 记忆管理  │  │ 报表生成  │  │
+│  │ (JWT)    │  │(WebSocket)│  │(检索/总结)│  │(周报/统计)│  │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘  │
+└─────────────────────────────────────────────────────────────┘
+        │              │              │              │
+        ▼              ▼              ▼              ▼
+┌────────────┐  ┌────────────┐  ┌────────────┐  ┌────────────┐
+│ PostgreSQL │  │   Redis    │  │  ChromaDB  │  │  Ollama /  │
+│ (用户/画像/ │  │ (短期记忆/ │  │ (长期记忆  │  │   API      │
+│  摘要/报表) │  │  会话缓存) │  │  向量检索) │  │ (LLM推理)  │
+└────────────┘  └────────────┘  └────────────┘  └────────────┘
+四、数据库设计（核心表）
+users 表
+
+sql
+id UUID PK, username VARCHAR, email VARCHAR, password_hash VARCHAR,
+created_at TIMESTAMP, last_active TIMESTAMP
+user_profiles 表（用户画像）
+
+sql
+id UUID PK, user_id UUID FK, name VARCHAR, age INT, occupation VARCHAR,
+goal TEXT, struggle TEXT, preferred_tone VARCHAR(20) DEFAULT 'warm',
+updated_at TIMESTAMP
+chat_sessions 表
+
+sql
+id UUID PK, user_id UUID FK, started_at TIMESTAMP, ended_at TIMESTAMP,
+message_count INT, avg_emotion_score FLOAT
+chat_messages 表
+
+sql
+id UUID PK, session_id UUID FK, role VARCHAR(10), content TEXT,
+emotion_label VARCHAR(20), emotion_score FLOAT, created_at TIMESTAMP
+long_term_memories 表（含向量）
+
+sql
+id UUID PK, user_id UUID FK, content TEXT, summary TEXT,
+embedding VECTOR(768), memory_type VARCHAR(20), created_at TIMESTAMP
+weekly_reports 表
+
+sql
+id UUID PK, user_id UUID FK, week_start DATE, week_end DATE,
+summary TEXT, emotion_trend JSON, top_topics JSON, generated_at TIMESTAMP
+五、API接口设计
+接口	方法	说明
+/api/auth/register	POST	用户注册
+/api/auth/login	POST	用户登录
+/ws/chat/{session_id}	WebSocket	实时对话（核心）
+/api/memories	GET	获取长期记忆列表
+/api/memories/{id}	DELETE	删除某条记忆
+/api/dashboard/heatmap	GET	获取情绪热力图数据
+/api/dashboard/trend	GET	获取趋势数据（天数参数）
+/api/dashboard/timeline	GET	获取摘要时间轴
+/api/dashboard/wordcloud	GET	获取关键词云数据
+/api/reports/weekly	GET	获取最新周报
+/api/sessions	GET	获取会话历史列表
+/api/sessions/{id}	GET	获取完整对话记录
+/api/export	GET	导出全部数据
+六、前端页面清单
+页面/路由	说明
+/chat	主聊天界面（默认页）
+/dashboard	心情看板（热力图+趋势+时间轴）
+/memories	长期记忆管理（查看/删除）
+/reports	历史周报列表
+/settings	用户设置（画像编辑/隐私开关/导出）
+/login	登录页
+/register	注册页
+七、开发路线图（4周）
+阶段	时间	任务
+第1周	Day 1-3	后端框架搭建：FastAPI + PostgreSQL + Redis + ChromaDB连接，JWT认证
+第1周	Day 4-7	WebSocket对话引擎 + 基础LLM调用（不接记忆）
+第2周	Day 8-10	记忆系统：短期滑动窗口 + 长期向量存储 + LLM自动总结
+第2周	Day 11-14	情绪感知：Prompt工程 + 情绪标签输出解析 + 前端颜色适配
+第3周	Day 15-18	前端开发：聊天界面 + WebSocket对接 + 流式渲染
+第3周	Day 19-21	前端开发：心情看板（热力图+趋势+时间轴+词云）
+第4周	Day 22-24	周报生成定时任务 + 用户画像编辑 + 长期记忆管理页
+第4周	Day 25-28	部署：Docker Compose编排 + 云服务器部署 + 测试+收尾
+八、简历描述（可直接用）
+AI"树洞"——情绪感知对话伙伴 | 全栈个人项目 | React + FastAPI + WebSocket
+
+开发了一款融合情感计算与长期记忆的AI对话应用。核心创新包括：①设计多层级记忆系统（Redis短期窗口 + ChromaDB长期向量摘要 + PostgreSQL用户画像），实现有记忆、个性化的对话体验；②通过Prompt工程实现对话中的实时情绪感知与可视化呈现；③构建完整的心情看板（热力图、趋势曲线、关键词云、AI周报），将抽象情绪转化为可量化的数据洞察。技术覆盖WebSocket实时通信、LLM流式输出、向量检索、数据可视化全链路。
