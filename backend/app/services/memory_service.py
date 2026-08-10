@@ -16,25 +16,47 @@ from app.core.redis_client import ShortMemoryStore
 from app.models.chat import ChatMessage, ChatSession
 from app.models.memory import LongTermMemory
 from app.models.user import UserProfile
-from app.services.emotion import detect_emotion
+from app.services.emotion import EmotionResult, detect_emotion
 from app.services.llm_client import llm
 
 logger = logging.getLogger(__name__)
 
-PROMPT_TEMPLATE = """你是一个温暖、善解人意的AI朋友。以下是与当前用户的对话历史和相关信息：
+# 每种情绪对应的「陪伴策略」：让检测到的情绪真正驱动 AI 的回应方式
+EMOTION_STRATEGY: dict[str, str] = {
+    "开心": "用户正在分享喜悦。先真诚地为他高兴、追问开心的细节，让快乐被放大。不要急着分析或给建议。",
+    "平静": "用户在平静地叙述。像老朋友一样自然回应，可以轻轻引导他多说一点，保持轻松陪伴感。",
+    "低落": "用户情绪低落。先温柔接住这份情绪（如「我在呢」「辛苦了」），允许他低落，别急着讲道理或灌鸡汤；等情绪被看见后，再给一点温暖和力量。",
+    "焦虑": "用户感到焦虑。先帮他慢下来、共情安抚，再温和地陪他拆解：具体在担心什么、什么是他能控制的；最后给一个很小、可执行的第一步。不要空洞地说「别担心」。",
+    "愤怒": "用户有愤怒的情绪。先接纳他的愤怒，不评判、不急着讲道理，让他感到被理解；可以温柔地问问发生了什么，帮他梳理情绪背后的真实需求。",
+}
+
+SYSTEM_PROMPT_TEMPLATE = """你是「心光树洞」，一个温暖、会倾听、有记忆的AI朋友。你和用户已经聊过一段时间了，像认识很久的微信好友。
+
+【你的说话方式】
+- 口语、短句、自然，偶尔带语气词（嗯、呢、哈、呀），绝不用书面语，不说「您」；
+- 真诚第一：先接住情绪，再回应内容；不堆大词、不说教、不灌鸡汤、不一条条列建议；
+- 记得你说过的话：自然地引用你记得的过往（如「上次你说……」），让用户感到被记得、被在乎。
 
 【用户画像】
 {profile}
 
-【长期记忆】（AI自动总结的过往重要信息）
+【你记得的过往】
 {memories}
 
-【近期对话】（最近{rounds}轮）
+【刚才的对话】
 {recent}
 
-【当前用户情绪感知】：{detected_emotion}
+【用户此刻的情绪】{emotion}（强度 {intensity:.0%}）
+【此刻你该怎么做】{strategy}
 
-请以温暖、共情的语气回复用户，自然地引用长期记忆中的信息（如"上次你说过..."），回复不超过150字。同时根据用户最后一句话判断其当前情绪，在回复结尾用【情绪标签：xxx】标注（只能取：开心/平静/低落/焦虑/愤怒 之一）。"""
+【回复结构】（自然融入，不要出现小标题）
+1. 一句简短真诚的共情；
+2. 自然回应他说的内容，可引用记忆；
+3. 温和收尾，或给一个很小、可行的行动提议。
+
+【硬性要求】
+- 全文不超过 120 字；
+- 结尾用【情绪标签：xxx】标注用户当前情绪（只能是：开心/平静/低落/焦虑/愤怒）。"""
 
 
 async def get_profile(db: AsyncSession, user_id: uuid.UUID) -> UserProfile | None:
@@ -65,8 +87,9 @@ async def build_prompt(
     user_id: uuid.UUID,
     session_id: uuid.UUID,
     user_content: str,
+    emotion: EmotionResult | None = None,
 ) -> str:
-    """并行检索三级记忆并组装 Prompt。"""
+    """并行检索三级记忆并组装 Prompt（情绪驱动对话风格）。"""
     profile = await get_profile(db, user_id)
 
     memories: list[dict] = []
@@ -82,14 +105,15 @@ async def build_prompt(
     recent_text = "\n".join(f"{m['role']}: {m['content']}" for m in recent[-10:]) or "（暂无）"
 
     mem_text = "\n".join(f"- {m['content']}" for m in memories) or "（暂无）"
-    emotion = detect_emotion(user_content)
+    emotion = emotion or detect_emotion(user_content)
 
-    return PROMPT_TEMPLATE.format(
+    return SYSTEM_PROMPT_TEMPLATE.format(
         profile=_profile_text(profile),
         memories=mem_text,
         recent=recent_text,
-        rounds=settings.SHORT_MEMORY_ROUNDS,
-        detected_emotion=f"{emotion.label}({emotion.score:.2f})",
+        emotion=emotion.label,
+        intensity=emotion.intensity,
+        strategy=EMOTION_STRATEGY.get(emotion.label, EMOTION_STRATEGY["平静"]),
     )
 
 

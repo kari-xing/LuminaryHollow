@@ -1,55 +1,147 @@
-"""情绪感知：识别 / 解析 / 评分 / 兜底。
+"""情绪感知：规则识别 + 强度计算 + LLM 标签解析。
 
-标签白名单（枚举），解析策略：
-1. 优先正则提取回复尾部【情绪标签：xxx】
-2. 匹配失败时基于关键词规则兜底
-3. 仍失败 → 默认「平静」
+升级说明：
+- 扩充关键词库，优先使用短语减少误伤
+- 否定词处理：情绪词前出现"不/没/没有"等时忽略该命中（"我不紧张"不会误判焦虑）
+- 强度分级：程度副词（非常/有点）+ 感叹号 + emoji 综合计算 intensity(0~1)
+- emoji 直接映射情绪
 """
+
 import re
 from dataclasses import dataclass
 
-# 情绪 → 积极程度评分（0~1）
+# 情绪 → 基础积极程度（0~1，0 消极 / 1 积极）
 EMOTION_SCORE: dict[str, float] = {
     "开心": 0.85,
-    "平静": 0.6,
+    "平静": 0.60,
     "低落": 0.35,
     "焦虑": 0.25,
-    "愤怒": 0.1,
+    "愤怒": 0.10,
 }
 
-EMOTION_LABELS = set(EMOTION_SCORE.keys())
+EMOTION_LABELS = set(EMOTION_SCORE)
 
-# 关键词 → 情绪（简单兜底规则）
+# 程度副词 → 强度增量
+_HIGH_INTENSIFIERS = (
+    "超级", "极其", "万分", "格外", "极度", "非常非常", "特别特别",
+    "非常", "特别", "十分", "相当", "狠狠", "彻底", "太",
+)
+_LOW_INTENSIFIERS = ("有点", "有些", "稍微", "一点点", "些许", "略", "微微", "一丝", "不太")
+
+# 否定词：情绪词前出现则忽略该命中
+_NEGATIONS = ("不", "没", "没有", "别", "并非", "不是", "不会", "不用", "毫无", "无")
+_NEGATION_WINDOW = 3
+
+# 表情符号 → 情绪
+_EMOJI_MAP: dict[str, str] = {
+    "😊": "开心", "😄": "开心", "😂": "开心", "🤣": "开心", "🤗": "开心", "🥳": "开心",
+    "😢": "低落", "😭": "低落", "😞": "低落", "💔": "低落", "🥺": "低落",
+    "😡": "愤怒", "🤬": "愤怒", "💢": "愤怒",
+    "😰": "焦虑", "😨": "焦虑", "😱": "焦虑", "😵": "焦虑", "😖": "焦虑",
+}
+
+# 关键词库：优先长短语，减少单字误伤
 _KEYWORDS: dict[str, list[str]] = {
-    "开心": ["开心", "高兴", "太好了", "哈哈", "棒", "幸福", "兴奋", "快乐"],
-    "愤怒": ["生气", "愤怒", "气死", "可恶", "恨", "气人", "恼火", "烦死"],
-    "焦虑": ["焦虑", "紧张", "担心", "害怕", "压力", "慌", "失眠", "怎么办"],
-    "低落": ["难过", "伤心", "低落", "沮丧", "失望", "哭", "孤独", "累", "没意思", "emo"],
+    "开心": [
+        "太好了", "太棒了", "开心", "高兴", "好开心", "真开心", "兴奋", "快乐", "幸福",
+        "成功上岸", "通过了", "录取", "中奖", "哈哈", "笑死我了", "超棒", "真不错", "不错不错", "好耶",
+    ],
+    "愤怒": [
+        "气死我了", "气死了", "气炸", "太生气了", "很生气", "生气", "愤怒", "可恶", "太过分",
+        "过分", "太气人", "气人", "恼火", "火大", "烦死了", "忍不了", "太讨厌", "讨厌",
+        "凭什么", "无语死了", "搞不懂", "气到发抖", "恶心", "欺人太甚",
+    ],
+    "焦虑": [
+        "焦虑", "紧张", "担心", "害怕", "压力好大", "压力大", "压力", "好慌", "慌", "失眠",
+        "睡不着", "怎么办", "好烦", "纠结", "不安", "担忧", "怕", "睡不着觉", "崩溃",
+        "面试", "考试", "裁员", "deadline", "ddl", "论文", "答辩", "来不及", "赶不上了",
+    ],
+    "低落": [
+        "难过", "伤心", "好难过", "低落", "沮丧", "失望", "想哭", "哭了", "哭", "孤独",
+        "寂寞", "好累", "累了", "没意思", "emo", "崩溃", "没劲", "委屈", "迷茫", "难受",
+        "失落", "自卑", "撑不住", "坚持不下去", "心累", "无助",
+    ],
+    "平静": [
+        "还好", "平静", "淡定", "还行", "没事", "放松", "顺其自然", "就这样吧", "可以接受", "无所谓", "挺好",
+    ],
 }
 
-_TAG_RE = re.compile(r"【\s*情绪标签\s*[:：]\s*(?P<label>[^】]+)\s*】")
+_TAG_RE = re.compile(
+    r"(?:【\s*(?:情绪标签|情绪)\s*[:：]?\s*|(?:情绪标签|情绪)\s*[:：]\s*)"
+    r"(?P<label>开心|平静|低落|焦虑|愤怒)[】\s，,。.!！]*"
+)
 
 
 @dataclass
 class EmotionResult:
     label: str
     score: float
+    intensity: float = 0.5
 
 
-def parse_emotion_from_reply(reply: str) -> EmotionResult:
-    """解析 LLM 回复尾部携带的情绪标签。"""
-    m = _TAG_RE.search(reply)
-    if m:
-        label = m.group("label").strip()
-        if label in EMOTION_LABELS:
-            return EmotionResult(label, EMOTION_SCORE[label])
-    # 兜底：关键词规则
-    return detect_emotion(reply)
+def _is_negated(text: str, pos: int) -> bool:
+    """情绪词命中位置前 _NEGATION_WINDOW 字符内出现否定词则视为被否定。"""
+    start = max(0, pos - _NEGATION_WINDOW)
+    segment = text[start:pos]
+    return any(neg in segment for neg in _NEGATIONS)
+
+
+def _calc_intensity(text: str, label: str) -> float:
+    """综合程度副词 / 感叹号 / emoji / 句长计算情绪强度（0~1）。"""
+    if label == "平静":
+        return 0.2
+    base = 0.5
+    for w in _HIGH_INTENSIFIERS:
+        if w in text:
+            base += 0.25
+            break
+    for w in _LOW_INTENSIFIERS:
+        if w in text:
+            base -= 0.2
+            break
+    base += min(0.3, text.count("！") * 0.1 + text.count("!") * 0.08)
+    if any(e in text for e in ("😭", "😡", "😰", "😱", "🥺", "💢")):
+        base += 0.2
+    if len(text) <= 6:
+        base += 0.1  # 简短强烈的表达
+    return max(0.2, min(1.0, round(base, 2)))
 
 
 def detect_emotion(text: str) -> EmotionResult:
-    """基于关键词规则识别用户情绪（Prompt 不可用时的降级方案）。"""
+    """规则识别：关键词（否定感知）+ emoji 计数 → 综合评分取最优。"""
+    hits: dict[str, int] = {}
     for label, words in _KEYWORDS.items():
-        if any(w in text for w in words):
-            return EmotionResult(label, EMOTION_SCORE[label])
-    return EmotionResult("平静", EMOTION_SCORE["平静"])
+        count = 0
+        for word in words:
+            idx = 0
+            while True:
+                pos = text.find(word, idx)
+                if pos == -1:
+                    break
+                if not _is_negated(text, pos):
+                    count += 1
+                idx = pos + len(word)
+        if count:
+            hits[label] = hits.get(label, 0) + count
+
+    for emoji, label in _EMOJI_MAP.items():
+        if emoji in text:
+            hits[label] = hits.get(label, 0) + 1
+
+    if not hits:
+        return EmotionResult("平静", EMOTION_SCORE["平静"], 0.2)
+
+    # 消极情绪优先级更高，避免"开心"与"担心"并存时误判
+    priority = {"愤怒": 5, "焦虑": 4, "低落": 3, "开心": 2, "平静": 1}
+    label = max(hits, key=lambda k: (hits[k] * priority[k], priority[k]))
+    return EmotionResult(label, EMOTION_SCORE[label], _calc_intensity(text, label))
+
+
+def parse_emotion_from_reply(reply: str) -> EmotionResult:
+    """解析 LLM 回复尾部携带的情绪标签（白名单枚举，容忍变体）；失败则规则兜底。"""
+    m = _TAG_RE.search(reply)
+    if m:
+        label = m.group("label")
+        return EmotionResult(label, EMOTION_SCORE[label], 0.5)
+    return detect_emotion(reply)
+

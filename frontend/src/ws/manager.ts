@@ -9,6 +9,7 @@ export type WSMessage = {
   content?: string;
   emotion_label?: string;
   emotion_score?: number;
+  emotion_intensity?: number;
   code?: number;
   message?: string;
   session_id?: string;

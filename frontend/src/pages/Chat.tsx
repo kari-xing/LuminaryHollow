@@ -50,7 +50,13 @@ export default function Chat() {
           break;
         case 'stream_end':
           chat.endStream(
-            msg.emotion_label ? { label: msg.emotion_label, score: msg.emotion_score ?? 0.5 } : undefined,
+            msg.emotion_label
+              ? {
+                  label: msg.emotion_label,
+                  score: msg.emotion_score ?? 0.5,
+                  intensity: msg.emotion_intensity ?? 0.5,
+                }
+              : undefined,
           );
           break;
         case 'quick_ok':
@@ -116,6 +122,7 @@ export default function Chat() {
               role={m.role}
               content={m.content}
               emotionLabel={m.emotion_label}
+              emotionIntensity={m.emotion_intensity}
               isPrivate={m.is_quick_checkin ? false : undefined}
               isQuickCheckin={m.is_quick_checkin}
             />

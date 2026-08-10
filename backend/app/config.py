@@ -23,12 +23,15 @@ class Settings(BaseSettings):
     CHROMA_HOST: str = "localhost"
     CHROMA_PORT: int = 8012
 
-    # LLM
+    # LLM（provider: ollama 本地 / openai 兼容云端，如 DeepSeek、OpenRouter、通义等）
+    LLM_PROVIDER: str = "ollama"
     LLM_BASE_URL: str = "http://localhost:11434"
     LLM_MODEL: str = "qwen2.5"
     LLM_API_KEY: str = ""
+    # Embedding 独立配置：DeepSeek 等云端 API 无 embedding 接口，向量化固定走本地 Ollama
+    EMBED_BASE_URL: str = "http://localhost:11434"
     EMBEDDING_MODEL: str = "nomic-embed-text"
-    LLM_TIMEOUT_SECONDS: int = 120
+    LLM_TIMEOUT_SECONDS: int = 180
 
     # 记忆参数
     SHORT_MEMORY_ROUNDS: int = 10      # 短期记忆滑动窗口轮数

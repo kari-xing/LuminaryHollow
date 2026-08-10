@@ -27,16 +27,36 @@ from app.ws.manager import manager
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-_FALLBACK_REPLIES = [
-    "我在呢，愿意继续和我说说吗？",
-    "嗯嗯，我听到了，可以多说一点吗？",
-    "不论如何，我都在这里陪着你。",
-]
+# LLM 离线时的降级回复：按用户情绪定制，保持「贴近人」
+_FALLBACK_REPLIES: dict[str, list[str]] = {
+    "开心": [
+        "哇，真替你高兴！愿意多跟我说说吗？",
+        "这太好了，我都能想象你开心的样子～",
+    ],
+    "平静": [
+        "嗯嗯，我在听，你接着说？",
+        "好，我懂你的意思，我们慢慢聊。",
+    ],
+    "低落": [
+        "我在呢。想说什么都可以，我陪着你。",
+        "辛苦了，抱抱你。愿意的话，多跟我说说？",
+    ],
+    "焦虑": [
+        "别急，我们先慢慢捋一捋。你具体在担心哪一步呢？",
+        "深呼吸一下，我在呢。把最让你紧张的那件事跟我说说？",
+    ],
+    "愤怒": [
+        "遇到这种事确实让人生气，我理解你。愿意跟我说说发生了什么吗？",
+        "这真的挺让人火大的，我在听，你说。",
+    ],
+}
+_FALLBACK_DEFAULT = "我在呢，愿意继续和我说说吗？"
 
 
 async def _handle_user_message(db: AsyncSession, session: ChatSession, user_id: uuid.UUID, ws_id: str, content: str) -> None:
     """处理一条用户消息：三级记忆 → LLM 流式 → 情绪解析 → 落库。"""
     privacy = await get_privacy_mode(str(user_id))
+    user_emotion = detect_emotion(content)  # 规则感知（含强度），供 Prompt 与前端使用
 
     # 1. 落库用户消息 + 写入短期记忆
     user_msg = ChatMessage(
@@ -47,13 +67,16 @@ async def _handle_user_message(db: AsyncSession, session: ChatSession, user_id: 
     await db.commit()
 
     short_store = ShortMemoryStore(str(session.id))
-    await short_store.push("user", content, {"emotion": detect_emotion(content).label})
+    await short_store.push(
+        "user", content,
+        {"emotion": user_emotion.label, "intensity": user_emotion.intensity},
+    )
 
     # 2. 通知前端"正在输入"
     await manager.send_json(ws_id, {"type": P.TYPE_TYPING})
 
-    # 3. 组装 Prompt（画像 + 长期记忆 + 短期记忆）
-    prompt = await build_prompt(db, user_id, session.id, content)
+    # 3. 组装 Prompt（画像 + 长期记忆 + 短期记忆 + 情绪策略）
+    prompt = await build_prompt(db, user_id, session.id, content, emotion=user_emotion)
     messages = [{"role": "system", "content": prompt}, {"role": "user", "content": content}]
 
     # 4. LLM 流式输出并转发
@@ -64,7 +87,8 @@ async def _handle_user_message(db: AsyncSession, session: ChatSession, user_id: 
             await manager.send_json(ws_id, {"type": P.TYPE_STREAM_CHUNK, "content": delta})
     except Exception as exc:
         logger.warning("LLM 流式失败，降级为规则回复: %s", exc)
-        fallback = _FALLBACK_REPLIES[session.message_count % len(_FALLBACK_REPLIES)]
+        candidates = _FALLBACK_REPLIES.get(user_emotion.label, [_FALLBACK_DEFAULT])
+        fallback = candidates[session.message_count % len(candidates)]
         for ch in fallback:
             chunks.append(ch)
             await manager.send_json(ws_id, {"type": P.TYPE_STREAM_CHUNK, "content": ch})
@@ -72,8 +96,9 @@ async def _handle_user_message(db: AsyncSession, session: ChatSession, user_id: 
 
     reply = "".join(chunks)
 
-    # 5. 情绪解析（Prompt 要求尾标【情绪标签：xxx】，正则提取 + 兜底）
+    # 5. 情绪解析（Prompt 要求尾标【情绪标签：xxx】，正则提取 + 规则兜底）
     emotion = parse_emotion_from_reply(reply)
+    emotion.intensity = user_emotion.intensity  # 强度取用户消息感知结果
 
     # 6. AI 回复落库 + 写短期记忆
     ai_msg = ChatMessage(
@@ -86,12 +111,13 @@ async def _handle_user_message(db: AsyncSession, session: ChatSession, user_id: 
     )
     db.add(ai_msg)
     await db.commit()
-    await short_store.push("assistant", reply, {"emotion_label": emotion.label})
+    await short_store.push(
+        "assistant", reply,
+        {"emotion_label": emotion.label, "intensity": emotion.intensity},
+    )
 
     # 7. 更新会话平均情绪分 + 每 N 轮异步总结
-    session.avg_emotion_score = (
-        session.avg_emotion_score or 0
-    )  # 原型简化：真实聚合在看板层
+    session.avg_emotion_score = session.avg_emotion_score or 0
     if session.message_count % 2 == 0:
         session.avg_emotion_score = round(
             (
@@ -103,7 +129,12 @@ async def _handle_user_message(db: AsyncSession, session: ChatSession, user_id: 
 
     await manager.send_json(
         ws_id,
-        {"type": P.TYPE_STREAM_END, "emotion_label": emotion.label, "emotion_score": emotion.score},
+        {
+            "type": P.TYPE_STREAM_END,
+            "emotion_label": emotion.label,
+            "emotion_score": emotion.score,
+            "emotion_intensity": emotion.intensity,
+        },
     )
 
     if not privacy:

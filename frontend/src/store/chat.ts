@@ -6,6 +6,7 @@ export interface ChatMessage {
   content: string;
   emotion_label?: string | null;
   emotion_score?: number | null;
+  emotion_intensity?: number | null;
   is_quick_checkin?: boolean;
   created_at: string;
 }
@@ -17,13 +18,13 @@ interface ChatState {
   isTyping: boolean;
   /** 流式输出的 AI 草稿（当前正在生成的完整内容） */
   draftContent: string;
-  draftEmotion: { label: string; score: number } | null;
+  draftEmotion: { label: string; score: number; intensity: number } | null;
   setSession: (id: string | null) => void;
   loadMessages: (messages: ChatMessage[]) => void;
   appendUserMessage: (content: string) => void;
   beginStream: () => void;
   appendChunk: (chunk: string) => void;
-  endStream: (emotion?: { label: string; score: number }) => void;
+  endStream: (emotion?: { label: string; score: number; intensity: number }) => void;
   setTyping: (v: boolean) => void;
   addQuickCheckin: (label: string) => void;
   clear: () => void;
@@ -48,7 +49,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }),
   beginStream: () => set({ isStreaming: true, isTyping: true, draftContent: '', draftEmotion: null }),
   appendChunk: (chunk) => set({ draftContent: get().draftContent + chunk }),
-  endStream: (emotion) =>
+  endStream: (emotion?: { label: string; score: number; intensity: number }) =>
     set((state) => {
       const full = state.draftContent;
       const newMsg: ChatMessage = {
@@ -57,6 +58,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         content: full,
         emotion_label: emotion?.label ?? null,
         emotion_score: emotion?.score ?? null,
+        emotion_intensity: emotion?.intensity ?? null,
         created_at: new Date().toISOString(),
       };
       return {

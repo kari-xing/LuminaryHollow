@@ -1,16 +1,26 @@
 import { emotionByLabel, EMOTION_KEYS, EMOTION_THEME } from '../../theme/emotion';
 
+/** 情绪强度文字化（让"被看见"更具体）。 */
+function intensityText(v?: number | null): string | null {
+  if (v == null) return null;
+  if (v >= 0.7) return '· 情绪很强';
+  if (v >= 0.4) return '· 有些明显';
+  return '· 轻微';
+}
+
 /** 消息气泡：用户靠右（蓝），AI 靠左（情绪主题色）。 */
 export default function MessageBubble({
   role,
   content,
   emotionLabel,
+  emotionIntensity,
   isPrivate,
   isQuickCheckin,
 }: {
   role: string;
   content: string;
   emotionLabel?: string | null;
+  emotionIntensity?: number | null;
   isPrivate?: boolean;
   isQuickCheckin?: boolean;
 }) {
@@ -39,7 +49,10 @@ export default function MessageBubble({
         <div className="ai-content">{content}</div>
         {emotionLabel && (
           <div className="ai-emotion" style={{ color: theme.color }}>
-            {theme.emoji} {theme.label}
+            {theme.emoji} 感知到你的情绪：{theme.label}
+            {intensityText(emotionIntensity) && (
+              <span className="ai-emotion-sub">{intensityText(emotionIntensity)}</span>
+            )}
           </div>
         )}
       </div>
