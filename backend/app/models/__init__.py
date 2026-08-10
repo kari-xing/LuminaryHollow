@@ -2,6 +2,7 @@
 from app.models.chat import ChatMessage, ChatSession
 from app.models.memory import LongTermMemory
 from app.models.report import WeeklyReport
+from app.models.schedule import ScheduleItem
 from app.models.user import User, UserProfile
 
 __all__ = [
@@ -11,4 +12,5 @@ __all__ = [
     "ChatMessage",
     "LongTermMemory",
     "WeeklyReport",
+    "ScheduleItem",
 ]

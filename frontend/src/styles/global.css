@@ -1,14 +1,18 @@
 /* ========== 心光树洞全局样式 ========== */
 :root {
-  --primary: #6c5ce7;
-  --primary-soft: #eeeafb;
-  --user-blue: #3b82f6;
-  --bg: #f7f5ff;
+  --primary: #7c6cf6;
+  --primary-deep: #5b4bd6;
+  --primary-soft: #efeefe;
+  --accent: #ffb15c;
+  --user-grad: linear-gradient(135deg, #5b8def, #7c6cf6);
+  --ai-grad: linear-gradient(135deg, #ffffff, #fbfaff);
+  --bg: #f6f5fd;
   --card: #ffffff;
-  --text: #2d2a3a;
-  --text-soft: #8a86a0;
-  --border: #e8e5f5;
-  --shadow: 0 4px 20px rgba(108, 92, 231, 0.08);
+  --text: #2b2738;
+  --text-soft: #8f8aa8;
+  --border: #e9e6f8;
+  --shadow: 0 8px 28px rgba(108, 92, 231, 0.1);
+  --shadow-sm: 0 2px 12px rgba(108, 92, 231, 0.08);
 }
 
 * {
@@ -17,17 +21,27 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-font-smoothing: antialiased;
+}
+
 body {
   font-family: 'PingFang SC', 'Microsoft YaHei', -apple-system, 'Segoe UI', Roboto, sans-serif;
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 600px at 100% -10%, rgba(124, 108, 246, 0.08), transparent 60%),
+    radial-gradient(1000px 500px at -10% 110%, rgba(255, 177, 92, 0.08), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
   color: var(--text);
-  line-height: 1.6;
+  line-height: 1.65;
 }
 
 a {
   color: var(--primary);
   text-decoration: none;
+  transition: opacity 0.2s;
 }
+a:hover { opacity: 0.85; }
 
 button {
   font-family: inherit;
@@ -37,43 +51,50 @@ button {
 /* 通用按钮 */
 .btn {
   border: none;
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 22px;
   font-size: 14px;
   font-weight: 600;
   transition: all 0.2s;
-  background: var(--primary);
+  background: linear-gradient(135deg, var(--primary), var(--primary-deep));
   color: #fff;
+  box-shadow: 0 4px 14px rgba(124, 108, 246, 0.3);
 }
-.btn:hover { opacity: 0.9; transform: translateY(-1px); }
-.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn:hover { opacity: 0.92; transform: translateY(-1px); box-shadow: 0 6px 18px rgba(124, 108, 246, 0.36); }
+.btn:active { transform: translateY(0); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; box-shadow: none; }
 .btn-ghost {
   background: transparent;
   color: var(--primary);
   border: 1px solid var(--primary);
+  box-shadow: none;
 }
+.btn-ghost:hover { background: var(--primary-soft); box-shadow: none; }
+.btn-sm { padding: 5px 12px; font-size: 12px; border-radius: 10px; }
 
 /* 卡片 */
 .card {
   background: var(--card);
-  border-radius: 16px;
+  border-radius: 18px;
   padding: 20px;
-  box-shadow: var(--shadow);
+  box-shadow: var(--shadow-sm);
   border: 1px solid var(--border);
+  transition: box-shadow 0.25s;
 }
+.card:hover { box-shadow: var(--shadow); }
 
 /* 输入框 */
 .input {
   width: 100%;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 12px;
   padding: 10px 14px;
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: all 0.2s;
   background: #fff;
 }
-.input:focus { border-color: var(--primary); }
+.input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(124, 108, 246, 0.12); }
 
 /* 消息淡入动画 */
 @keyframes fadeUp {
@@ -83,9 +104,10 @@ button {
 .fade-up { animation: fadeUp 0.3s ease; }
 
 /* 页面标题 */
-.page-title { font-size: 22px; font-weight: 700; margin-bottom: 18px; }
-.page-sub { color: var(--text-soft); font-size: 13px; margin-top: -12px; margin-bottom: 18px; }
+.page-title { font-size: 24px; font-weight: 800; margin-bottom: 6px; }
+.page-sub { color: var(--text-soft); font-size: 13px; margin-bottom: 20px; }
 
 /* 滚动条 */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-thumb { background: #d6d0ef; border-radius: 3px; }
+::-webkit-scrollbar-thumb { background: #d8d3f2; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #c4bdec; }

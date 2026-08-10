@@ -1,10 +1,17 @@
 import { create } from 'zustand';
 
+export interface HeatmapSlot {
+  slot: number;
+  avg_score: number | null;
+  count: number;
+}
+
 export interface HeatmapDay {
   date: string;
   avg_score: number | null;
   count: number;
   label_mode?: string | null;
+  slots: HeatmapSlot[];
 }
 
 export interface TrendPoint {

@@ -38,7 +38,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   draftContent: '',
   draftEmotion: null,
 
-  setSession: (id) => set({ sessionId: id, messages: [], draftContent: '' }),
+  setSession: (id) =>
+    set({
+      sessionId: id,
+      messages: [],
+      draftContent: '',
+      draftEmotion: null,
+      isStreaming: false,
+      isTyping: false,
+    }),
   loadMessages: (messages) => set({ messages }),
   appendUserMessage: (content) =>
     set({
@@ -48,10 +56,29 @@ export const useChatStore = create<ChatState>((set, get) => ({
       ],
     }),
   beginStream: () => set({ isStreaming: true, isTyping: true, draftContent: '', draftEmotion: null }),
-  appendChunk: (chunk) => set({ draftContent: get().draftContent + chunk }),
+  appendChunk: (chunk) =>
+    set((state) => {
+      // 防御：非流式状态收到 chunk（重复 handler / 迟到消息）直接忽略，防止重复追加
+      if (!state.isStreaming || !chunk) return state;
+      return { draftContent: state.draftContent + chunk };
+    }),
   endStream: (emotion?: { label: string; score: number; intensity: number }) =>
     set((state) => {
       const full = state.draftContent;
+      // 幂等保护：重复收到 stream_end（如 handler 重复注册）时，
+      // 若草稿已清空或与上一条 AI 消息一致，只复位状态、不重复添加消息
+      const lastMsg = state.messages[state.messages.length - 1];
+      if (
+        (lastMsg?.role === 'assistant' && lastMsg.content === full && full !== '') ||
+        full === ''
+      ) {
+        return {
+          isStreaming: false,
+          isTyping: false,
+          draftContent: '',
+          draftEmotion: emotion ?? null,
+        };
+      }
       const newMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',

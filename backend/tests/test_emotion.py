@@ -1,5 +1,9 @@
-"""情绪解析单元测试（覆盖规则识别 / 否定处理 / 强度 / emoji / 标签变体）。"""
-from app.services.emotion import detect_emotion, parse_emotion_from_reply
+"""情绪解析单元测试（覆盖规则识别 / 否定处理 / 强度 / emoji / 标签变体 / 剥离）。"""
+from app.services.emotion import (
+    detect_emotion,
+    parse_emotion_from_reply,
+    strip_emotion_tag,
+)
 
 
 def test_parse_reply_tag():
@@ -39,6 +43,13 @@ def test_detect_negation():
     assert detect_emotion("一点都不难过").label == "平静"
 
 
+def test_detect_negated_positive():
+    # 否定词 + 正面情绪词 → 反向为低落（"我都不开心"不是平静）
+    assert detect_emotion("我都不开心").label == "低落"
+    assert detect_emotion("今天有点不高兴").label == "低落"
+    assert detect_emotion("高兴不起来").label == "低落"
+
+
 def test_detect_emoji():
     assert detect_emotion("今天太棒了😊🎉").label == "开心"
     assert detect_emotion("我真的要被气死了😡").label == "愤怒"
@@ -53,4 +64,18 @@ def test_detect_calm_default():
     result = detect_emotion("今天天气不错")
     assert result.label == "平静"
     assert result.intensity == 0.2
+
+
+def test_parse_alias_label():
+    # 模型可能输出不在白名单的近似标签 → 映射到白名单
+    assert parse_emotion_from_reply("抱抱你【情绪标签：疲惫无助】").label == "低落"
+    assert parse_emotion_from_reply("别急【情绪标签：紧张】").label == "焦虑"
+
+
+def test_strip_emotion_tag():
+    # 标签只用于内部解析，不应展示给用户
+    cleaned = strip_emotion_tag("别担心，都会好的。【情绪标签：焦虑】")
+    assert cleaned == "别担心，都会好的。"
+    assert strip_emotion_tag("你好呀【情绪：开心】").endswith("你好呀")
+    assert strip_emotion_tag("没有任何标签").startswith("没有任何标签")
 

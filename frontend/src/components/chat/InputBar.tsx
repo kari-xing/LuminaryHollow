@@ -11,7 +11,7 @@ export default function InputBar({
   disabled: boolean;
 }) {
   return (
-    <div className="input-bar">
+    <div className="input-area">
       <textarea
         className="input chat-input"
         placeholder="和树洞说说心里话吧…"

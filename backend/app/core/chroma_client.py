@@ -1,6 +1,12 @@
 """ChromaDB 客户端：长期记忆向量写入 / 检索 / 删除。"""
 import logging
+import os
 import uuid
+
+# 绕过 Windows 系统代理：ChromaDB 内部 httpx 默认读取系统代理，
+# 会把 localhost 请求误发给代理（如 Clash localhost:29758）导致 503
+os.environ.setdefault("NO_PROXY", "localhost,127.0.0.1,::1")
+os.environ.setdefault("no_proxy", "localhost,127.0.0.1,::1")
 
 import chromadb
 from chromadb.config import Settings as ChromaSettings

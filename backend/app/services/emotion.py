@@ -60,6 +60,9 @@ _KEYWORDS: dict[str, list[str]] = {
         "难过", "伤心", "好难过", "低落", "沮丧", "失望", "想哭", "哭了", "哭", "孤独",
         "寂寞", "好累", "累了", "没意思", "emo", "崩溃", "没劲", "委屈", "迷茫", "难受",
         "失落", "自卑", "撑不住", "坚持不下去", "心累", "无助",
+        "不开心", "不高兴", "不快乐", "郁闷", "没心情", "提不起劲", "高兴不起来", "麻木", "烦得很",
+        "被骂", "挨骂", "被批评", "被吼", "被训", "被数落", "被说", "被打击",
+        "批评", "被批", "挨批", "指责", "被指责", "训斥",
     ],
     "平静": [
         "还好", "平静", "淡定", "还行", "没事", "放松", "顺其自然", "就这样吧", "可以接受", "无所谓", "挺好",
@@ -68,8 +71,32 @@ _KEYWORDS: dict[str, list[str]] = {
 
 _TAG_RE = re.compile(
     r"(?:【\s*(?:情绪标签|情绪)\s*[:：]?\s*|(?:情绪标签|情绪)\s*[:：]\s*)"
-    r"(?P<label>开心|平静|低落|焦虑|愤怒)[】\s，,。.!！]*"
+    r"(?P<label>[^】\]\n]{1,12})[】\s，,。.!！]*"
 )
+
+# 模型可能输出的近似标签 → 白名单映射
+_TAG_ALIASES: dict[str, str] = {
+    "疲惫": "低落", "无助": "低落", "失望": "低落", "伤心": "低落", "委屈": "低落",
+    "难过": "低落", "沮丧": "低落", "孤独": "低落", "迷茫": "低落", "累了": "低落",
+    "紧张": "焦虑", "担忧": "焦虑", "不安": "焦虑", "着急": "焦虑", "担心": "焦虑",
+    "惶恐": "焦虑", "慌乱": "焦虑", "有压力": "焦虑", "压力大": "焦虑",
+    "生气": "愤怒", "烦躁": "愤怒", "恼火": "愤怒", "火大": "愤怒", "不满": "愤怒",
+    "气愤": "愤怒", "讨厌": "愤怒",
+    "高兴": "开心", "快乐": "开心", "兴奋": "开心", "幸福": "开心", "喜悦": "开心",
+    "自豪": "开心", "期待": "开心", "惊喜": "开心",
+    "淡定": "平静", "从容": "平静", "放松": "平静", "安宁": "平静",
+    "不开心": "低落", "不高兴": "低落", "不快乐": "低落", "郁闷": "低落", "委屈": "低落",
+}
+
+# 用于从回复正文中剥离情绪标签（只解析、不展示）
+_TAG_CLEAN_RE = re.compile(
+    r"[【\[]\s*(?:情绪标签|情绪)\s*[:：]?\s*[^】\]\n]{0,12}[】\]]"
+)
+
+
+def strip_emotion_tag(text: str) -> str:
+    """移除回复正文中的【情绪标签：xxx】标记，避免展示给用户。"""
+    return _TAG_CLEAN_RE.sub("", text).strip()
 
 
 @dataclass
@@ -79,11 +106,32 @@ class EmotionResult:
     intensity: float = 0.5
 
 
+# 否定词 + 正面情绪词（如"不开心""高兴不起来"）→ 反向映射为低落
+_NEGATED_POSITIVE = (
+    "开心", "高兴", "快乐", "幸福", "兴奋", "愉快", "舒服", "满意", "好受", "轻松", "自在",
+)
+
+
 def _is_negated(text: str, pos: int) -> bool:
     """情绪词命中位置前 _NEGATION_WINDOW 字符内出现否定词则视为被否定。"""
     start = max(0, pos - _NEGATION_WINDOW)
     segment = text[start:pos]
     return any(neg in segment for neg in _NEGATIONS)
+
+
+def _count_negated_positives(text: str) -> int:
+    """否定词 + 正面情绪词（如"我都不开心"）→ 视为消极（低落）。"""
+    count = 0
+    for w in _NEGATED_POSITIVE:
+        idx = 0
+        while True:
+            pos = text.find(w, idx)
+            if pos == -1:
+                break
+            if _is_negated(text, pos):
+                count += 1
+            idx = pos + len(w)
+    return count
 
 
 def _calc_intensity(text: str, label: str) -> float:
@@ -128,6 +176,11 @@ def detect_emotion(text: str) -> EmotionResult:
         if emoji in text:
             hits[label] = hits.get(label, 0) + 1
 
+    # 否定词 + 正面情绪词（"我都不开心""高兴不起来"）→ 低落
+    negated = _count_negated_positives(text)
+    if negated:
+        hits["低落"] = hits.get("低落", 0) + negated
+
     if not hits:
         return EmotionResult("平静", EMOTION_SCORE["平静"], 0.2)
 
@@ -138,10 +191,12 @@ def detect_emotion(text: str) -> EmotionResult:
 
 
 def parse_emotion_from_reply(reply: str) -> EmotionResult:
-    """解析 LLM 回复尾部携带的情绪标签（白名单枚举，容忍变体）；失败则规则兜底。"""
+    """解析 LLM 回复尾部携带的情绪标签（白名单 + 近似别名映射）；失败则规则兜底。"""
     m = _TAG_RE.search(reply)
     if m:
-        label = m.group("label")
-        return EmotionResult(label, EMOTION_SCORE[label], 0.5)
+        raw = m.group("label").strip()
+        label = raw if raw in EMOTION_LABELS else _TAG_ALIASES.get(raw)
+        if label:
+            return EmotionResult(label, EMOTION_SCORE[label], 0.5)
     return detect_emotion(reply)
 

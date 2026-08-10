@@ -10,6 +10,7 @@ from app.core.deps import get_current_user
 from app.models.chat import ChatMessage, ChatSession
 from app.models.user import User
 from app.schemas.chat import ChatMessageOut, ChatSessionOut
+from app.services.emotion import strip_emotion_tag
 
 router = APIRouter()
 
@@ -56,9 +57,16 @@ async def get_session_detail(
             .order_by(ChatMessage.created_at)
         )
     ).scalars().all()
+    # 历史消息可能残留旧版【情绪标签：xxx】标记，返回前统一剥离
     return {
         "session": ChatSessionOut.model_validate(session).model_dump(),
-        "messages": [ChatMessageOut.model_validate(m).model_dump() for m in msgs],
+        "messages": [
+            {
+                **ChatMessageOut.model_validate(m).model_dump(),
+                "content": strip_emotion_tag(m.content) or m.content,
+            }
+            for m in msgs
+        ],
     }
 
 

@@ -14,6 +14,16 @@ class ConnectionManager:
     async def connect(self, session_id: str, ws: WebSocket) -> None:
         await ws.accept()
         async with self._lock:
+            conns = self._connections.get(session_id)
+            if conns:
+                # 同一会话只保留最新连接：先关闭旧连接，避免新旧并存时
+                # send_json 把同一份消息广播两份 → 前端收到重复的流式内容。
+                for old in list(conns):
+                    try:
+                        await old.close()
+                    except Exception:
+                        pass
+                conns.clear()
             self._connections.setdefault(session_id, set()).add(ws)
 
     async def disconnect(self, session_id: str, ws: WebSocket) -> None:

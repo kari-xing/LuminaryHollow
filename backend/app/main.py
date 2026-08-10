@@ -10,8 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.config import settings
+from app.core.logging_config import setup_logging
 from app.tasks.scheduler import shutdown_scheduler, start_scheduler
 from app.ws.chat import router as ws_router
+
+setup_logging()
 
 logging.basicConfig(
     level=logging.INFO,
@@ -22,6 +25,14 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # 开发便捷：自动建表（生产环境请使用 `alembic upgrade head`）
+    try:
+        from app.core.database import init_db
+
+        await init_db()
+    except Exception as exc:
+        logger.warning("自动建表失败（可稍后通过 alembic 迁移）: %s", exc)
+
     # 启动：定时任务
     start_scheduler()
     logger.info("%s 启动完成", settings.PROJECT_NAME)

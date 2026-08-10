@@ -4,6 +4,7 @@ import AppLayout from './components/layout/AppLayout';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Chat from './pages/Chat';
+import Schedule from './pages/Schedule';
 import Dashboard from './pages/Dashboard';
 import Memories from './pages/Memories';
 import Reports from './pages/Reports';
@@ -31,6 +32,7 @@ export default function App() {
       >
         <Route index element={<Navigate to="/chat" replace />} />
         <Route path="chat" element={<Chat />} />
+        <Route path="schedule" element={<Schedule />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="memories" element={<Memories />} />
         <Route path="reports" element={<Reports />} />

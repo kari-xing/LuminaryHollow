@@ -40,6 +40,9 @@ class Settings(BaseSettings):
     MEMORY_TOP_K: int = 5              # 长期记忆召回条数
     MEMORY_DEDUP_THRESHOLD: float = 0.85
 
+    # 看板
+    TIMEZONE: str = "Asia/Shanghai"    # 情绪时段聚合使用的本地时区
+
     # 定时任务
     WEEKLY_REPORT_CRON: str = "0 22 * * 0"
 

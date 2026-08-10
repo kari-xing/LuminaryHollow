@@ -28,11 +28,12 @@ services:
   chromadb:
     image: chromadb/chroma:latest
     ports:
-      - "8001:8012"
+      - "8002:8000"
     volumes:
       - chromadata:/chroma/chroma
     environment:
       - ANONYMIZED_TELEMETRY=False
+      - IS_PERSISTENT=True
 
   backend:
     build: ./backend
@@ -42,7 +43,7 @@ services:
       DATABASE_URL: postgresql+asyncpg://hollow:${DB_PASSWORD:-hollow}@postgres:5432/hollow
       REDIS_URL: redis://redis:6379/0
       CHROMA_HOST: chromadb
-      CHROMA_PORT: "8012"
+      CHROMA_PORT: "8000"
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434}

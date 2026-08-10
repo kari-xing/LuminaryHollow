@@ -18,6 +18,7 @@ build/
 
 # 数据与日志
 *.log
+logs/
 pgdata/
 chroma_data/
 redis_data/
