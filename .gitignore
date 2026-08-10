@@ -1,0 +1,34 @@
+# 依赖
+node_modules/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 环境变量
+.env
+.env.local
+.env.production
+
+# 构建产物
+dist/
+build/
+*.log
+*.tsbuildinfo
+
+# 数据与日志
+*.log
+pgdata/
+chroma_data/
+redis_data/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# 测试
+.pytest_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,78 @@
+# 心光树洞 LuminaryHollow 一键编排
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: hollow
+      POSTGRES_USER: hollow
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-hollow}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hollow"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8001:8012"
+    volumes:
+      - chromadata:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=False
+
+  backend:
+    build: ./backend
+    ports:
+      - "8012:8012"
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hollow:${DB_PASSWORD:-hollow}@postgres:5432/hollow
+      REDIS_URL: redis://redis:6379/0
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8012"
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:11434}
+      LLM_MODEL: ${LLM_MODEL:-qwen2.5}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      WEEKLY_REPORT_CRON: ${WEEKLY_REPORT_CRON:-0 22 * * 0}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      chromadb:
+        condition: service_started
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - backend
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+      - frontend
+
+volumes:
+  pgdata:
+  redisdata:
+  chromadata:

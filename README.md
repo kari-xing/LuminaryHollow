@@ -48,7 +48,7 @@ docker compose up -d
 cd backend
 python -m venv .venv && .venv\Scripts\activate   # Windows
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --reload --port 8012
 
 # 前端
 cd frontend
@@ -61,25 +61,38 @@ npm run dev
 ```
 LuminaryHollow/
 ├── README.md
+├── 需求.txt                      # 原始需求
 ├── docs/
 │   └── 需求开发文档.md        # 完整详细的需求与开发设计文档
-├── backend/                 # FastAPI 后端
+├── backend/                 # FastAPI 后端（原型骨架）
 │   ├── app/
-│   │   ├── main.py          # 应用入口
-│   │   ├── auth/            # JWT 认证
-│   │   ├── chat/            # 对话引擎（WebSocket）
-│   │   ├── memories/        # 记忆管理（检索/总结）
-│   │   ├── dashboard/       # 看板聚合
-│   │   └── reports/         # 周报生成
-│   └── alembic/             # 数据库迁移
-├── frontend/                # React 前端
+│   │   ├── main.py          # 应用入口（路由注册 / 健康检查）
+│   │   ├── config.py        # 环境配置（.env）
+│   │   ├── core/            # database / redis / chroma / security / deps
+│   │   ├── models/          # SQLAlchemy 模型（users/chat/memory/report）
+│   │   ├── schemas/         # Pydantic Schemas
+│   │   ├── api/             # REST 路由（auth/users/sessions/memories/dashboard/reports/export）
+│   │   ├── ws/              # WebSocket（chat 端点 / 连接管理 / 协议）
+│   │   ├── services/        # LLM 适配 / 情绪感知 / 记忆 / 看板 / 周报
+│   │   └── tasks/           # APScheduler 定时任务
+│   ├── alembic/             # 数据库迁移
+│   ├── tests/               # pytest（认证 / 情绪解析）
+│   ├── alembic.ini
+│   ├── requirements.txt
+│   ├── Dockerfile
+│   └── .env.example
+├── frontend/                # React 前端（原型骨架）
 │   └── src/
-│       ├── pages/           # 页面（chat/dashboard/memories/reports/settings）
-│       ├── components/      # 组件
-│       ├── ws/              # WebSocket 管理
-│       └── store/           # 状态管理
+│       ├── pages/           # login/register/chat/dashboard/memories/reports/settings
+│       ├── components/      # chat / dashboard / layout / common
+│       ├── ws/manager.ts    # WebSocket 管理（重连/心跳/路由）
+│       ├── store/           # Zustand（auth/chat/dashboard）
+│       ├── api/client.ts    # axios + token 拦截器
+│       ├── theme/           # 情绪主题色
+│       └── styles/          # 全局与组件样式
 ├── docker-compose.yml
-└── nginx.conf
+├── nginx.conf
+└── .env.example
 ```
 
 ## 📚 文档
